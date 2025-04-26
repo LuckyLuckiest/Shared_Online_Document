@@ -19,7 +19,7 @@ import java.util.regex.Pattern;
 @RestController
 public class SessionController {
 
-	private static final Path   SESSIONS_DIR      = Paths.get(System.getProperty("java.io.tmpdir"), "sessions");
+	protected static final Path   SESSIONS_DIR      = Paths.get(System.getProperty("java.io.tmpdir"), "sessions");
 	// need to work on the regex
 	private static final String SESSION_KEY_REGEX = "^session-[a-zA-Z0-9_-]{6,12}$";
 

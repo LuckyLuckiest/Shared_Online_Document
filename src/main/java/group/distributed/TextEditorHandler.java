@@ -8,6 +8,8 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
@@ -38,8 +40,13 @@ public class TextEditorHandler extends TextWebSocketHandler {
 		// Add client info
 		clients.put(session, new ClientInfo(sessionId, username, userColor));
 
-		// Initialize document if it doesn't exist
-		documents.putIfAbsent(sessionId, new StringBuilder());
+		// check if the document file contains the data
+		Path filePath = SessionController.SESSIONS_DIR.resolve(sessionId + ".txt");
+
+		if (Files.exists(filePath)) {
+			String fullText = String.join("\n", Files.readAllLines(filePath));
+			documents.put(sessionId, new StringBuilder(fullText));
+		} else documents.putIfAbsent(sessionId, new StringBuilder());
 	}
 
 	@Override
@@ -57,12 +64,14 @@ public class TextEditorHandler extends TextWebSocketHandler {
 		String   type      = node.get("type").asText();
 		String   sessionId = getSessionIdFromUri(Objects.requireNonNull(session.getUri()));
 
+		System.out.println("Test: " + node);
+
 		if ("diff".equals(type)) {
 			DiffMessage   diff = mapper.treeToValue(node, DiffMessage.class);
 			StringBuilder doc  = documents.computeIfAbsent(sessionId, k -> new StringBuilder());
 
 			// Apply and save
-			applyDiff(doc, diff);
+			applyDiff(documents.get(sessionId), diff);
 			ContentSaveController.saveToFile(sessionId, doc.toString());
 		}
 
@@ -94,7 +103,7 @@ public class TextEditorHandler extends TextWebSocketHandler {
 	}
 
 	private void applyDiff(StringBuilder text, DiffMessage diff) {
-		text.replace(diff.start, diff.end, diff.inserted);
+		text.replace(diff.start, diff.end + 1, diff.inserted);
 	}
 
 	private Map<String, String> parseQueryParams(String query) {
