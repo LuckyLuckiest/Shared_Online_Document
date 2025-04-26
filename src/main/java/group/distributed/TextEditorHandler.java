@@ -7,46 +7,28 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
-import java.net.URI;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 
 public class TextEditorHandler extends TextWebSocketHandler {
 
 	private final ObjectMapper mapper = new ObjectMapper();
 
 	// Sessions by WebSocketSession
-	private final Map<WebSocketSession, ClientInfo> clients = new ConcurrentHashMap<>();
+	private final Map<WebSocketSession, ClientInfo> clients   = new ConcurrentHashMap<>();
+	private final Map<String, StringBuilder>        documents = new ConcurrentHashMap<>();
 
-	// One document per sessionId
-	private final Map<String, StringBuilder> documents = new ConcurrentHashMap<>();
+	// Messages Queue
+	private final Map<String, BlockingQueue<DiffMessage>> messageQueues = new ConcurrentHashMap<>();
+	private final ExecutorService                         executor      = Executors.newCachedThreadPool();
 
 	@Override
 	public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-		// Extract query params
-		URI uri = session.getUri();
-		if (uri == null) return;
-
-		Map<String, String> query     = parseQueryParams(uri.getQuery());
-		String              sessionId = query.getOrDefault("session", "default");
-		String              username  = query.getOrDefault("username", "Anonymous");
-		String              userColor = query.getOrDefault("userColor", "#000000");
-
-		// Add client info
-		clients.put(session, new ClientInfo(sessionId, username, userColor));
-
-		// check if the document file contains the data
-		Path filePath = SessionController.SESSIONS_DIR.resolve(sessionId + ".txt");
-
-		if (Files.exists(filePath)) {
-			String fullText = String.join("\n", Files.readAllLines(filePath));
-			documents.put(sessionId, new StringBuilder(fullText));
-		} else documents.putIfAbsent(sessionId, new StringBuilder());
+		// initialize happens when the init message is received
 	}
 
 	@Override
@@ -56,24 +38,71 @@ public class TextEditorHandler extends TextWebSocketHandler {
 
 	@Override
 	protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
+		String   json = message.getPayload();
+		JsonNode node = mapper.readTree(json);
+
+		// for debugging
+		//System.out.println("Action: " + json);
+
+		String type = node.get("type").asText();
+
+		if (initMessage(session, type, node)) return;
+
+		if (updateMessage(session, type, json, node)) return;
+	}
+
+	private boolean initMessage(WebSocketSession session, String type, JsonNode node) {
+		if (!type.equals("init")) return false;
+
+		String sessionId = node.get("sessionId").asText();
+		String username  = node.get("username").asText();
+		String userColor = node.get("userColor").asText();
+
+		clients.put(session, new ClientInfo(sessionId, username, userColor));
+
+		// Load the session document if needed
+		documents.computeIfAbsent(sessionId, id -> {
+			try {
+				Path filePath = SessionController.SESSIONS_DIR.resolve(sessionId + ".html");
+				if (Files.exists(filePath)) {
+					String content = Files.readString(filePath, StandardCharsets.UTF_8);
+					return new StringBuilder(content);
+				}
+			} catch (Exception exception) {
+				exception.printStackTrace();
+			}
+			return new StringBuilder();
+		});
+
+		// Start the queue processor for this session if not running
+		messageQueues.computeIfAbsent(sessionId, id -> {
+			BlockingQueue<DiffMessage> queue = new LinkedBlockingQueue<>();
+			startQueueProcessor(id, queue);
+			return queue;
+		});
+
+		return true;
+	}
+
+	private boolean updateMessage(WebSocketSession session, String type, String json, JsonNode node) throws
+			IOException {
+		if (!type.equals("update")) return false;
+
 		ClientInfo info = clients.get(session);
-		if (info == null) return;
+		if (info == null) return false;
 
-		String   json      = message.getPayload();
-		JsonNode node      = mapper.readTree(json);
-		String   type      = node.get("type").asText();
-		String   sessionId = getSessionIdFromUri(Objects.requireNonNull(session.getUri()));
+		String sessionId = info.sessionId;
 
-		System.out.println("Test: " + node);
+		DiffMessage diff = mapper.treeToValue(node, DiffMessage.class);
 
-		if ("diff".equals(type)) {
-			DiffMessage   diff = mapper.treeToValue(node, DiffMessage.class);
-			StringBuilder doc  = documents.computeIfAbsent(sessionId, k -> new StringBuilder());
+		// Queue the difference for processing
+		BlockingQueue<DiffMessage> queue = messageQueues.computeIfAbsent(sessionId, id -> {
+			BlockingQueue<DiffMessage> newQueue = new LinkedBlockingQueue<>();
+			startQueueProcessor(id, newQueue);
+			return newQueue;
+		});
 
-			// Apply and save
-			applyDiff(documents.get(sessionId), diff);
-			ContentSaveController.saveToFile(sessionId, doc.toString());
-		}
+		queue.offer(diff);
 
 		// Broadcast to users in the same session
 		for (WebSocketSession sess : clients.keySet()) {
@@ -82,41 +111,38 @@ public class TextEditorHandler extends TextWebSocketHandler {
 				sess.sendMessage(new TextMessage(json));
 			}
 		}
+
+		return true;
 	}
 
-	private String getSessionFilePath(String sessionId) {
-		return Paths.get(System.getProperty("java.io.tmpdir"), sessionId + ".txt").toString();
-	}
+	private void startQueueProcessor(String sessionId, BlockingQueue<DiffMessage> queue) {
+		executor.submit(() -> {
+			try {
+				while (true) {
+					DiffMessage diff = queue.take();
 
-	private String getSessionIdFromUri(URI uri) {
-		String query = uri.getQuery();
+					StringBuilder document = documents.computeIfAbsent(sessionId, k -> new StringBuilder());
 
-		if (query != null) for (String part : query.split("&")) {
-			String[] pair = part.split("=");
-
-			if (pair.length == 2 && pair[0].equalsIgnoreCase("session")) {
-				return pair[1];
+					synchronized (document) {
+						applyDiff(document, diff);
+						ContentSaveController.saveContent(sessionId, document.toString());
+					}
+				}
+			} catch (InterruptedException exception) {
+				Thread.currentThread().interrupt();
 			}
-		}
-
-		return "default";
+		});
 	}
 
 	private void applyDiff(StringBuilder text, DiffMessage diff) {
-		text.replace(diff.start, diff.end + 1, diff.inserted);
-	}
+		int start = diff.start;
+		int end   = diff.end;
 
-	private Map<String, String> parseQueryParams(String query) {
-		Map<String, String> map = new HashMap<>();
-		if (query == null || query.isEmpty()) return map;
+		if (start < 0) start = 0;
+		if (end < start) end = start;
+		if (end > text.length()) end = text.length();
 
-		for (String pair : query.split("&")) {
-			String[] parts = pair.split("=", 2);
-			if (parts.length == 2) {
-				map.put(parts[0], parts[1]);
-			}
-		}
-		return map;
+		text.replace(start, end, diff.inserted);
 	}
 
 	// Data classes
