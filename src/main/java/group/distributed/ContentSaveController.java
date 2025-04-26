@@ -23,7 +23,7 @@ public class ContentSaveController {
 			String   content  = jsonNode.get("content").asText();
 
 			// Save the content to a file
-			saveToFile(content, session);
+			saveToFile(session, content);
 
 		} catch (IOException e) {
 			System.out.println("Error parsing content: " + e.getMessage());
@@ -32,7 +32,7 @@ public class ContentSaveController {
 	}
 
 	// Save content to a file with a given session ID
-	protected static void saveToFile(String content, String sessionId) {
+	protected static void saveToFile(String sessionId, String content) {
 		Path sessionPath = Paths.get(System.getProperty("java.io.tmpdir"), "sessions", sessionId + ".txt");
 
 		try (FileWriter writer = new FileWriter(sessionPath.toFile())) {
