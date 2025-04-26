@@ -1,136 +1,45 @@
 <!DOCTYPE html>
 <html lang="en">
-
-<style>
-    .cursor {
-        pointer-events: none;
-        z-index: 999;
-    }
-</style>
-
 <head>
-    <title>Collaborative Text Editor</title>
+    <meta charset="UTF-8">
+    <title>Join Collaborative Editor</title>
 </head>
 <body>
-<h1>Collaborative Text Editor</h1>
-<textarea id="editor" rows="20" cols="80"></textarea>
+<h1>Join Collaborative Editor</h1>
+<form id="session-form">
+    <label>Username: <input type="text" id="username" required></label><br>
+    <label>Color: <input type="color" id="color" required></label><br>
+    <label>Session ID: <input type="text" id="session-id" placeholder="Leave empty to generate"></label><br>
+    <button type="submit">Join</button>
+</form>
 
 <script>
-    const socket = new WebSocket("ws://localhost:8080/edit");
-    const editor = document.getElementById("editor");
-    let lastValue = "";
-    let selfChange = false;
-    const userId = "user-" + Math.floor(Math.random() * 10000); // Simple random ID
+    document.getElementById("session-form").addEventListener("submit", function (e) {
+        e.preventDefault();
+        const username = document.getElementById("username").value;
+        const color = document.getElementById("color").value;
+        let sessionId = document.getElementById("session-id").value;
 
-    fetch('/content')
-        .then(res => res.text())
-        .then(text => {
-            editor.value = text;
-            lastValue = text;
-        });
+        // If no sessionId is provided, generate one
+        if (!sessionId) {
+            sessionId = 'session-' + Math.random().toString(36).substring(2, 10);
+        }
 
-    editor.addEventListener("input", () => {
-        if (selfChange) {
-            selfChange = false;
+        // Validate session ID format
+        if (!isValidSessionId(sessionId)) {
+            alert("Invalid session ID format. Please follow the format: alphanumeric, dash, or underscore, 6-12 characters.");
             return;
         }
 
-        const newValue = editor.value;
-        const diff = generateDiff(lastValue, newValue);
-        const cursorPos = editor.selectionStart;
-
-        lastValue = newValue;
-
-        socket.send(JSON.stringify({
-            type: "diff",
-            userId,
-            start: diff.start,
-            end: diff.end,
-            inserted: diff.inserted,
-            cursor: cursorPos
-        }));
+        // Attempt to join the session
+        window.location.href = `/editor.html?session=${sessionId}&user=${encodeURIComponent(username)}&color=${encodeURIComponent(color)}`;
     });
 
-    editor.addEventListener("keyup", () => {
-        socket.send(JSON.stringify({
-            type: "cursor",
-            userId,
-            cursor: editor.selectionStart
-        }));
-    });
-
-    const userCursors = {};
-
-    socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.userId === userId) return;
-
-        if (data.type === "diff") {
-            const newValue = applyDiff(editor.value, data);
-            selfChange = true;
-            editor.value = newValue;
-            lastValue = newValue;
-        }
-
-        if (data.cursor !== undefined) {
-            showCursor(data.userId, data.cursor);
-        }
-    };
-
-    function generateDiff(oldText, newText) {
-        let start = 0;
-        while (start < oldText.length && start < newText.length && oldText[start] === newText[start]) {
-            start++;
-        }
-
-        let oldEnd = oldText.length - 1;
-        let newEnd = newText.length - 1;
-        while (oldEnd >= start && newEnd >= start && oldText[oldEnd] === newText[newEnd]) {
-            oldEnd--;
-            newEnd--;
-        }
-
-        return {
-            start,
-            end: oldEnd + 1,
-            inserted: newText.slice(start, newEnd + 1)
-        };
-    }
-
-    function applyDiff(text, diff) {
-        return text.slice(0, diff.start) + diff.inserted + text.slice(diff.end);
-    }
-
-    function showCursor(id, position) {
-        if (!userCursors[id]) {
-            const color = "#" + Math.floor(Math.random()*16777215).toString(16);
-            const cursor = document.createElement("div");
-            cursor.className = "cursor";
-            cursor.style.position = "absolute";
-            cursor.style.height = "20px";
-            cursor.style.width = "2px";
-            cursor.style.backgroundColor = color;
-            cursor.dataset.userId = id;
-            document.body.appendChild(cursor);
-            userCursors[id] = cursor;
-        }
-
-        const coords = getCaretCoordinates(editor, position);
-        const cursor = userCursors[id];
-        cursor.style.left = coords.left + editor.offsetLeft + "px";
-        cursor.style.top = coords.top + editor.offsetTop + "px";
-    }
-
-    // You can use a caret-positioning library like "textarea-caret"
-    function getCaretCoordinates(element, position) {
-        // Minimal solution — inaccurate for multiline; use a library like "textarea-caret" for production
-        const lines = element.value.substr(0, position).split("\n");
-        return {
-            top: lines.length * 20,
-            left: lines[lines.length - 1].length * 8
-        };
+    function isValidSessionId(sessionId) {
+        // Match the same regex from the server
+        const regex = /^session-[a-zA-Z0-9_-]{6,12}$/;
+        return regex.test(sessionId);
     }
 </script>
-
 </body>
 </html>

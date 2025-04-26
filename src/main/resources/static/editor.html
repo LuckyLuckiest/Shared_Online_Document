@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Collaborative Editor</title>
+    <style>
+        .cursor {
+            pointer-events: none;
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+<h1>Collaborative Editor</h1>
+<textarea id="editor" rows="20" cols="80"></textarea>
+
+<script>
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get("session");
+    const userId = params.get("user") || ("user-" + Math.floor(Math.random() * 10000));
+    const username = params.get("username") || userId;
+    const userColor = params.get("color") || "#000000";
+
+    const socket = new WebSocket("ws://localhost:8080/edit?session=" + sessionId);
+    const editor = document.getElementById("editor");
+
+    let lastValue = "";
+    let selfChange = false;
+
+    // Load current file content from server
+    fetch(`/content?session=${sessionId}`)
+        .then(res => res.text())
+        .then(text => {
+        editor.value = text;
+        lastValue = text;
+    });
+
+    // Throttling mechanism for saving content to server
+    let timeoutId;
+    const debounceSave = (newValue) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+            saveContentToServer(newValue);
+        }, 500); // 500ms delay for throttling
+    };
+
+    editor.addEventListener("input", () => {
+        if (selfChange) {
+            console.log("Self Change triggered");
+            selfChange = false;
+            return;
+        }
+
+        const newValue = editor.value;
+        const diff = generateDiff(lastValue, newValue);
+        const cursorPos = editor.selectionStart;
+        lastValue = newValue;
+
+        socket.send(JSON.stringify({
+            type: "diff",
+            userId,
+            username,
+            userColor,
+            sessionId,
+            start: diff.start,
+            end: diff.end,
+            inserted: diff.inserted,
+            cursor: cursorPos
+        }));
+
+        // Throttled save to server
+        debounceSave(newValue);
+    });
+
+    editor.addEventListener("keyup", () => {
+        socket.send(JSON.stringify({
+            type: "cursor",
+            userId,
+            username,
+            userColor,
+            sessionId,
+            cursor: editor.selectionStart
+        }));
+    });
+
+    socket.addEventListener("message", (event) => {
+        const data = JSON.parse(event.data);
+        if (data.userId === userId) return;
+
+        if (data.type === "diff") {
+            const newValue = applyDiff(editor.value, data);
+            selfChange = true;
+            editor.value = newValue;
+            lastValue = newValue;
+        }
+
+        if (data.cursor !== undefined) {
+            showCursor(data.userId, data.cursor, data.userColor);
+        }
+    });
+
+    function generateDiff(oldText, newText) {
+        let start = 0;
+        while (start < oldText.length && start < newText.length && oldText[start] === newText[start]) {
+            start++;
+        }
+
+        let oldEnd = oldText.length - 1;
+        let newEnd = newText.length - 1;
+        while (oldEnd >= start && newEnd >= start && oldText[oldEnd] === newText[newEnd]) {
+            oldEnd--;
+            newEnd--;
+        }
+
+        return {
+            start,
+            end: oldEnd + 1,
+            inserted: newText.slice(start, newEnd + 1)
+        };
+    }
+
+    function applyDiff(text, diff) {
+        return text.slice(0, diff.start) + diff.inserted + text.slice(diff.end);
+    }
+
+    function showCursor(id, position, color) {
+        if (!userCursors[id]) {
+            const cursor = document.createElement("div");
+            cursor.className = "cursor";
+            cursor.style.position = "absolute";
+            cursor.style.height = "20px";
+            cursor.style.width = "2px";
+            cursor.style.backgroundColor = color || "#000";
+            document.body.appendChild(cursor);
+            userCursors[id] = cursor;
+        }
+
+        const coords = getCaretCoordinates(editor, position);
+        const cursor = userCursors[id];
+        cursor.style.left = coords.left + editor.offsetLeft + "px";
+        cursor.style.top = coords.top + editor.offsetTop + "px";
+    }
+
+    function getCaretCoordinates(element, position) {
+        const lines = element.value.substr(0, position).split("\n");
+        return {
+            top: lines.length * 20,
+            left: lines[lines.length - 1].length * 8
+        };
+    }
+
+    // Function to send the content to the server for saving
+    function saveContentToServer(content) {
+        fetch(`/save-content?session=${sessionId}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ content })
+        })
+            .then(response => {
+            if (!response.ok) {
+                throw new Error("Failed to save content");
+            }
+            console.log("Content saved successfully.");
+        })
+            .catch(err => console.error("Save content error:", err));
+    }
+</script>
+</body>
+</html>

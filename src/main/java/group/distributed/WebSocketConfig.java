@@ -13,4 +13,5 @@ public class WebSocketConfig implements WebSocketConfigurer {
 	public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
 		registry.addHandler(new TextEditorHandler(), "/edit").setAllowedOrigins("*");
 	}
+
 }
