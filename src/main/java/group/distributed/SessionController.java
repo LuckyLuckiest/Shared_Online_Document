@@ -31,29 +31,6 @@ public class SessionController {
 		}
 	}
 
-	@GetMapping("/join-session")
-	public ResponseEntity<Resource> joinSession(@RequestParam String session) throws IOException {
-		// Validate session key
-		if (!isValidSessionKey(session)) {
-			// Invalid session key
-			return ResponseEntity.badRequest().body(null);
-		}
-
-		Path filePath = getSessionFilePath(session);
-
-		if (!Files.exists(filePath)) {
-			Files.writeString(filePath, "");
-		}
-
-		Resource resource = new UrlResource(filePath.toUri());
-
-		return ResponseEntity.ok()
-							 .header(HttpHeaders.CONTENT_DISPOSITION,
-									 "attachment; filename=\"" + session + "_document.txt\"")
-							 .contentType(MediaType.APPLICATION_OCTET_STREAM)
-							 .body(resource);
-	}
-
 	@GetMapping("/content")
 	public String getContent(@RequestParam String session) throws IOException {
 		// Validate the session key
@@ -77,6 +54,6 @@ public class SessionController {
 	}
 
 	private Path getSessionFilePath(String sessionId) {
-		return SESSIONS_DIR.resolve(sessionId + ".txt");
+		return SESSIONS_DIR.resolve(sessionId + ".html");
 	}
 }

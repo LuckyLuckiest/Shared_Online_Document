@@ -6,6 +6,8 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
@@ -13,34 +15,38 @@ import java.nio.file.Paths;
 @RequestMapping("/save-content")
 public class ContentSaveController {
 
-	private final ObjectMapper mapper = new ObjectMapper();
+	private static final ObjectMapper mapper = new ObjectMapper();
 
 	@PostMapping
-	public void saveContent(@RequestParam String session, @RequestBody String jsonContent) {
+	public static void saveContentFromJson(@RequestParam String session, @RequestBody String jsonContent) {
 		try {
-			// Parse the JSON content sent by the client
-			JsonNode jsonNode = mapper.readTree(jsonContent);
-			String   content  = jsonNode.get("content").asText();
+			JsonNode jsonNode    = mapper.readTree(jsonContent);
+			String   htmlContent = jsonNode.get("content").asText();
 
-			// Save the content to a file
-			saveToFile(session, content);
-
+			saveContent(session, htmlContent);
 		} catch (IOException e) {
 			System.out.println("Error parsing content: " + e.getMessage());
 			e.printStackTrace();
 		}
 	}
 
-	// Save content to a file with a given session ID
-	protected static void saveToFile(String sessionId, String content) {
-		Path sessionPath = Paths.get(System.getProperty("java.io.tmpdir"), "sessions", sessionId + ".txt");
+	// Used by internal server code (like TextEditorHandler) when we already have HTML
+	public static void saveContent(String sessionId, String htmlContent) {
+		Path sessionDir = Paths.get(System.getProperty("java.io.tmpdir"), "sessions");
 
-		try (FileWriter writer = new FileWriter(sessionPath.toFile())) {
-			writer.write(content);
+		try {
+			if (!Files.exists(sessionDir)) {
+				Files.createDirectories(sessionDir);
+			}
+
+			Path sessionPath = sessionDir.resolve(sessionId + ".html");
+
+			try (FileWriter writer = new FileWriter(sessionPath.toFile(), StandardCharsets.UTF_8)) {
+				writer.write(htmlContent);
+			}
 		} catch (IOException exception) {
 			System.out.println("A problem has occurred: " + exception.getMessage());
 			exception.printStackTrace();
 		}
 	}
-
 }
