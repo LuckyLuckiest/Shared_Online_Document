@@ -116,7 +116,7 @@ public class TextEditorHandler extends TextWebSocketHandler {
 		public String type;
 		public String userId;
 		public String username;
-		public String usercolor;
+		public String userColor;
 		public String sessionId;
 		public int    start;
 		public int    end;
