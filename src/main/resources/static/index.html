@@ -1,134 +1,361 @@
 <!DOCTYPE html>
 <html lang="en">
-
-<style>
-    .cursor {
-        pointer-events: none;
-        z-index: 999;
-    }
-</style>
-
 <head>
-    <title>Collaborative Text Editor</title>
+    <meta charset="UTF-8">
+    <title>Collaborative Rich Text Editor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f1f1f1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        #toolbar {
+            background: white;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        #toolbar select,
+        #toolbar button,
+        #toolbar input[type="color"] {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            background-color: #fff;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        #toolbar button:hover,
+        #toolbar select:hover,
+        #toolbar input[type="color"]:hover {
+            background-color: #eee;
+        }
+
+        #editor-container {
+            background: #ddd;
+            padding: 40px;
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            min-height: 90vh;
+        }
+
+        #editor {
+            background: white;
+            width: 794px; /* A4 width at 96dpi */
+            min-height: 1123px; /* A4 height at 96dpi */
+            padding: 40px;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            overflow: visible;
+            outline: none;
+            position: relative;
+        }
+
+        .shape {
+            position: absolute;
+            background-color: rgba(76, 175, 80, 0.5);
+            border: 2px solid #4CAF50;
+            resize: both;
+            overflow: hidden;
+            min-width: 20px;
+            min-height: 20px;
+            cursor: move;
+        }
+
+        .circle {
+            border-radius: 50%;
+        }
+
+        .user-cursor {
+            position: absolute;
+            width: 2px;
+            height: 20px;
+            background: red;
+            z-index: 999;
+            pointer-events: none;
+        }
+
+        .user-name {
+            position: absolute;
+            background: #fff;
+            padding: 2px 4px;
+            font-size: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-top: -20px;
+            margin-left: 5px;
+            white-space: nowrap;
+        }
+
+        #user-list {
+            margin-bottom: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .avatar {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background-color: #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            color: #fff;
+        }
+    </style>
 </head>
 <body>
-<h1>Collaborative Text Editor</h1>
-<textarea id="editor" rows="20" cols="80"></textarea>
+
+<h1>Collaborative Rich Text Editor</h1>
+
+<div id="user-list"></div>
+
+<div id="toolbar">
+    <select id="fontName">
+        <option value="Arial">Arial</option>
+        <option value="Georgia">Georgia</option>
+        <option value="Times New Roman">Times New Roman</option>
+        <option value="Courier New">Courier New</option>
+    </select>
+    <select id="fontSize">
+        <option value="1">Small</option>
+        <option value="3" selected>Normal</option>
+        <option value="5">Large</option>
+        <option value="7">Huge</option>
+    </select>
+    <button onclick="format('bold')"><b>B</b></button>
+    <button onclick="format('italic')"><i>I</i></button>
+    <button onclick="format('underline')"><u>U</u></button>
+    <input type="color" id="fontColor" onchange="changeColor(this.value)">
+    <button onclick="insertImage()">Insert Image</button>
+    <select id="shapePicker">
+        <option value="">Choose Shape</option>
+        <option value="rectangle">Rectangle</option>
+        <option value="circle">Circle</option>
+    </select>
+    <button onclick="downloadPDF()">Download as PDF</button>
+</div>
+
+<div id="editor-container">
+    <div id="editor" contenteditable="true"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
 <script>
+    function format(command) {
+        document.execCommand(command, false, null);
+    }
+
+    function changeColor(color) {
+        document.execCommand('foreColor', false, color);
+    }
+
+    function insertImage() {
+        const url = prompt('Enter image URL');
+        if (url) {
+            document.execCommand('insertImage', false, url);
+        }
+    }
+
+    document.getElementById('fontName').addEventListener('change', (e) => {
+        document.execCommand('fontName', false, e.target.value);
+    });
+
+    document.getElementById('fontSize').addEventListener('change', (e) => {
+        document.execCommand('fontSize', false, e.target.value);
+    });
+
+    function downloadPDF() {
+        const element = document.getElementById('editor');
+        html2pdf().from(element).save('document.pdf');
+    }
+
+    // Collaboration and users
     const socket = new WebSocket("ws://localhost:8080/edit");
     const editor = document.getElementById("editor");
-    let lastValue = "";
-    let selfChange = false;
-    const userId = "user-" + Math.floor(Math.random() * 10000); // Simple random ID
+    const userList = document.getElementById('user-list');
+    const userId = "user-" + Math.floor(Math.random() * 10000);
+    const userColor = '#' + Math.floor(Math.random() * 16777215).toString(16);
+
+    let users = {};
 
     fetch('/content')
         .then(res => res.text())
-        .then(text => {
-            editor.value = text;
-            lastValue = text;
+        .then(html => {
+            editor.innerHTML = html;
         });
 
     editor.addEventListener("input", () => {
-        if (selfChange) {
-            selfChange = false;
-            return;
-        }
-
-        const newValue = editor.value;
-        const diff = generateDiff(lastValue, newValue);
-        const cursorPos = editor.selectionStart;
-
-        lastValue = newValue;
-
         socket.send(JSON.stringify({
-            type: "diff",
+            type: "content",
             userId,
-            start: diff.start,
-            end: diff.end,
-            inserted: diff.inserted,
-            cursor: cursorPos
+            content: editor.innerHTML
         }));
     });
 
-    editor.addEventListener("keyup", () => {
+    editor.addEventListener("keyup", (e) => {
         socket.send(JSON.stringify({
             type: "cursor",
             userId,
-            cursor: editor.selectionStart
+            position: getCaretPosition(editor)
         }));
     });
 
-    const userCursors = {};
+    socket.onopen = () => {
+        socket.send(JSON.stringify({type: 'join', userId, color: userColor}));
+    };
 
     socket.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.userId === userId) return;
 
-        if (data.type === "diff") {
-            const newValue = applyDiff(editor.value, data);
-            selfChange = true;
-            editor.value = newValue;
-            lastValue = newValue;
+        if (data.type === "content") {
+            editor.innerHTML = data.content;
         }
 
-        if (data.cursor !== undefined) {
-            showCursor(data.userId, data.cursor);
+        if (data.type === "cursor") {
+            showUserCursor(data.userId, data.position, data.color);
+        }
+
+        if (data.type === "join") {
+            users[data.userId] = {color: data.color};
+            refreshUserList();
         }
     };
 
-    function generateDiff(oldText, newText) {
-        let start = 0;
-        while (start < oldText.length && start < newText.length && oldText[start] === newText[start]) {
-            start++;
+    function getCaretPosition(editableDiv) {
+        let caretPos = 0, sel, range;
+        if (window.getSelection) {
+            sel = window.getSelection();
+            if (sel.rangeCount) {
+                range = sel.getRangeAt(0);
+                caretPos = range.startOffset;
+            }
         }
-
-        let oldEnd = oldText.length - 1;
-        let newEnd = newText.length - 1;
-        while (oldEnd >= start && newEnd >= start && oldText[oldEnd] === newText[newEnd]) {
-            oldEnd--;
-            newEnd--;
-        }
-
-        return {
-            start,
-            end: oldEnd + 1,
-            inserted: newText.slice(start, newEnd + 1)
-        };
+        return caretPos;
     }
 
-    function applyDiff(text, diff) {
-        return text.slice(0, diff.start) + diff.inserted + text.slice(diff.end);
-    }
-
-    function showCursor(id, position) {
-        if (!userCursors[id]) {
-            const color = "#" + Math.floor(Math.random()*16777215).toString(16);
-            const cursor = document.createElement("div");
-            cursor.className = "cursor";
-            cursor.style.position = "absolute";
-            cursor.style.height = "20px";
-            cursor.style.width = "2px";
+    function showUserCursor(id, position, color) {
+        let cursor = document.querySelector(`.user-cursor[data-id='${id}']`);
+        let nameTag = document.querySelector(`.user-name[data-id='${id}']`);
+        if (!cursor) {
+            cursor = document.createElement('div');
+            cursor.className = 'user-cursor';
+            cursor.dataset.id = id;
             cursor.style.backgroundColor = color;
-            cursor.dataset.userId = id;
-            document.body.appendChild(cursor);
-            userCursors[id] = cursor;
-        }
+            editor.appendChild(cursor);
 
+            nameTag = document.createElement('div');
+            nameTag.className = 'user-name';
+            nameTag.dataset.id = id;
+            nameTag.innerText = id;
+            editor.appendChild(nameTag);
+        }
         const coords = getCaretCoordinates(editor, position);
-        const cursor = userCursors[id];
-        cursor.style.left = coords.left + editor.offsetLeft + "px";
-        cursor.style.top = coords.top + editor.offsetTop + "px";
+        cursor.style.left = coords.left + 'px';
+        cursor.style.top = coords.top + 'px';
+        nameTag.style.left = (coords.left + 5) + 'px';
+        nameTag.style.top = (coords.top - 20) + 'px';
     }
 
-    // You can use a caret-positioning library like "textarea-caret"
     function getCaretCoordinates(element, position) {
-        // Minimal solution — inaccurate for multiline; use a library like "textarea-caret" for production
-        const lines = element.value.substr(0, position).split("\n");
+        const lines = element.innerText.substr(0, position).split("\n");
         return {
             top: lines.length * 20,
             left: lines[lines.length - 1].length * 8
         };
+    }
+
+    function refreshUserList() {
+        userList.innerHTML = "";
+        for (let id in users) {
+            const avatar = document.createElement('div');
+            avatar.className = 'avatar';
+            avatar.style.backgroundColor = users[id].color;
+            avatar.textContent = id.split('-')[1];
+            userList.appendChild(avatar);
+        }
+    }
+
+    // Shapes
+    let shapeMode = null;
+    let startX, startY, shapeElement = null;
+
+    const shapePicker = document.getElementById('shapePicker');
+    shapePicker.addEventListener('change', (e) => {
+        shapeMode = e.target.value;
+    });
+
+    editor.addEventListener('mousedown', (e) => {
+        if (!shapeMode) return;
+
+        startX = e.offsetX;
+        startY = e.offsetY;
+
+        shapeElement = document.createElement('div');
+        shapeElement.classList.add('shape');
+        if (shapeMode === 'circle') {
+            shapeElement.classList.add('circle');
+        }
+        shapeElement.style.left = startX + 'px';
+        shapeElement.style.top = startY + 'px';
+        editor.appendChild(shapeElement);
+
+        editor.addEventListener('mousemove', resizeShape);
+        document.addEventListener('mouseup', finishShape);
+    });
+
+    function resizeShape(e) {
+        if (!shapeElement) return;
+        const currentX = e.offsetX;
+        const currentY = e.offsetY;
+        const width = Math.abs(currentX - startX);
+        const height = Math.abs(currentY - startY);
+
+        shapeElement.style.width = width + 'px';
+        shapeElement.style.height = height + 'px';
+        shapeElement.style.left = Math.min(startX, currentX) + 'px';
+        shapeElement.style.top = Math.min(startY, currentY) + 'px';
+    }
+
+    function finishShape() {
+        editor.removeEventListener('mousemove', resizeShape);
+        document.removeEventListener('mouseup', finishShape);
+
+        if (shapeElement) {
+            shapeElement.setAttribute('draggable', true);
+            shapeElement.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', '');
+            });
+            shapeElement.addEventListener('drag', (e) => {
+                if (e.offsetX > 0 && e.offsetY > 0) {
+                    shapeElement.style.left = e.offsetX + 'px';
+                    shapeElement.style.top = e.offsetY + 'px';
+                }
+            });
+        }
+
+        shapeElement = null;
+        shapeMode = null;
+        shapePicker.value = "";
     }
 </script>
 
