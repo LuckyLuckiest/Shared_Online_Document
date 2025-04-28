@@ -1,10 +1,5 @@
 package group.distributed;
 
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.UrlResource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -19,9 +14,9 @@ import java.util.regex.Pattern;
 @RestController
 public class SessionController {
 
-	protected static final Path   SESSIONS_DIR      = Paths.get(System.getProperty("java.io.tmpdir"), "sessions");
-	// need to work on the regex
-	private static final String SESSION_KEY_REGEX = "^session-[a-zA-Z0-9_-]{6,12}$";
+	protected static final Path   SESSIONS_DIR = Paths.get(System.getProperty("java.io.tmpdir"), "sessions");
+	private static final   String SESSION_KEY_REGEX
+											   = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 
 	static {
 		try {
