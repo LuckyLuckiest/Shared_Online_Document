@@ -23,8 +23,8 @@ public class TextEditorHandler extends TextWebSocketHandler {
 	private final Map<String, StringBuilder>        documents = new ConcurrentHashMap<>();
 
 	// Messages Queue
-	private final Map<String, BlockingQueue<DiffMessage>> messageQueues = new ConcurrentHashMap<>();
-	private final ExecutorService                         executor      = Executors.newCachedThreadPool();
+	private final Map<String, BlockingQueue<DifferenceMessage>> messageQueues = new ConcurrentHashMap<>();
+	private final ExecutorService                               executor      = Executors.newCachedThreadPool();
 
 	@Override
 	public void afterConnectionEstablished(WebSocketSession session) throws Exception {
@@ -76,7 +76,7 @@ public class TextEditorHandler extends TextWebSocketHandler {
 
 		// Start the queue processor for this session if not running
 		messageQueues.computeIfAbsent(sessionId, id -> {
-			BlockingQueue<DiffMessage> queue = new LinkedBlockingQueue<>();
+			BlockingQueue<DifferenceMessage> queue = new LinkedBlockingQueue<>();
 			startQueueProcessor(id, queue);
 			return queue;
 		});
@@ -91,18 +91,17 @@ public class TextEditorHandler extends TextWebSocketHandler {
 		ClientInfo info = clients.get(session);
 		if (info == null) return false;
 
-		String sessionId = info.sessionId;
-
-		DiffMessage diff = mapper.treeToValue(node, DiffMessage.class);
+		String            sessionId  = info.sessionId;
+		DifferenceMessage difference = mapper.treeToValue(node, DifferenceMessage.class);
 
 		// Queue the difference for processing
-		BlockingQueue<DiffMessage> queue = messageQueues.computeIfAbsent(sessionId, id -> {
-			BlockingQueue<DiffMessage> newQueue = new LinkedBlockingQueue<>();
+		BlockingQueue<DifferenceMessage> queue = messageQueues.computeIfAbsent(sessionId, id -> {
+			BlockingQueue<DifferenceMessage> newQueue = new LinkedBlockingQueue<>();
 			startQueueProcessor(id, newQueue);
 			return newQueue;
 		});
 
-		queue.offer(diff);
+		queue.offer(difference);
 
 		// Broadcast to users in the same session
 		for (WebSocketSession sess : clients.keySet()) {
@@ -115,16 +114,18 @@ public class TextEditorHandler extends TextWebSocketHandler {
 		return true;
 	}
 
-	private void startQueueProcessor(String sessionId, BlockingQueue<DiffMessage> queue) {
+	private void startQueueProcessor(String sessionId, BlockingQueue<DifferenceMessage> queue) {
 		executor.submit(() -> {
 			try {
 				while (true) {
-					DiffMessage diff = queue.take();
+					DifferenceMessage difference = queue.poll(60, TimeUnit.SECONDS);
+
+					if (difference == null) break;
 
 					StringBuilder document = documents.computeIfAbsent(sessionId, k -> new StringBuilder());
 
 					synchronized (document) {
-						applyDiff(document, diff);
+						applyDifference(document, difference);
 						ContentSaveController.saveContent(sessionId, document.toString());
 					}
 				}
@@ -134,20 +135,18 @@ public class TextEditorHandler extends TextWebSocketHandler {
 		});
 	}
 
-	private void applyDiff(StringBuilder text, DiffMessage diff) {
-		int start = diff.start;
-		int end   = diff.end;
+	private void applyDifference(StringBuilder text, DifferenceMessage difference) {
+		int start = difference.start;
+		int end   = difference.end;
 
 		if (start < 0) start = 0;
 		if (end < start) end = start;
 		if (end > text.length()) end = text.length();
 
-		text.replace(start, end, diff.inserted);
+		text.replace(start, end, difference.inserted);
 	}
 
-	// Data classes
-
-	public static class DiffMessage {
+	public static class DifferenceMessage {
 		public String type;
 		public String userId;
 		public String username;

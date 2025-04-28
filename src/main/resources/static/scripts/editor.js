@@ -18,7 +18,7 @@ editor.addEventListener("input", () => {
     clearTimeout(inputTimeout);
     inputTimeout = setTimeout(() => {
         const newValue = editor.innerHTML;
-        const diff = generateDiff(lastValue, newValue);
+        const difference = generateDiff(lastValue, newValue);
         const cursorPos = getCaretCharacterOffsetWithin(editor);
         lastValue = newValue;
 
@@ -28,9 +28,9 @@ editor.addEventListener("input", () => {
             username,
             userColor,
             sessionId,
-            start: diff.start,
-            end: diff.end,
-            inserted: diff.inserted,
+            start: difference.start,
+            end: difference.end,
+            inserted: difference.inserted,
             cursor: cursorPos
         }));
 

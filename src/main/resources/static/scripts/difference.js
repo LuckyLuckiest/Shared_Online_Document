@@ -1,7 +1,7 @@
 const messageQueue = [];
 let isProcessing = false;
 
-function generateDiff(oldText, newText) {
+function generateDifference(oldText, newText) {
     let start = 0;
     while (start < oldText.length && start < newText.length && oldText[start] === newText[start]) {
         start++;
@@ -21,9 +21,9 @@ function generateDiff(oldText, newText) {
     };
 }
 
-function applyDiffToEditor(diff) {
+function applyDifferenceToEditor(difference) {
     const value = editor.innerHTML;
-    editor.innerHTML = value.slice(0, diff.start) + diff.inserted + value.slice(diff.end);
+    editor.innerHTML = value.slice(0, difference.start) + difference.inserted + value.slice(difference.end);
 }
 
 function processQueue() {
@@ -35,7 +35,7 @@ function processQueue() {
 
     if (data.type === "update") {
         selfChange = true;
-        applyDiffToEditor(data);
+        applyDifferenceToEditor(data);
         showRemoteCursor(data.userId, data.cursor, data.userColor, data.username);
         lastValue = editor.innerHTML;
     } else if (data.type === "cursor-update") {
