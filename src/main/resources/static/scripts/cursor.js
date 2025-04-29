@@ -17,7 +17,15 @@ socket.addEventListener("message", (event) => {
 
     if (message.type === "cursor-update") {
         updateRemoteCursor(message);
+    } else if (message.type === "user-left") {
+        const { userId } = message;
+        const cursorElement = cursors[userId];
+        if (cursorElement) {
+            cursorElement.remove();
+            delete cursors[userId];
+        }
     }
+
 });
 
 socket.addEventListener("close", () => {
@@ -33,7 +41,6 @@ edit.addEventListener("keyup", (e) => {
 
 function startCursorUpdates() {
     if (cursorUpdateInterval) return;
-
     cursorUpdateInterval = setInterval(sendCursorUpdate, 300);
 }
 
@@ -62,23 +69,15 @@ function sendCursorUpdate() {
     }));
 }
 
-// This function computes the position of the cursor relative to the editor
 function getCursorPosition(node, offset) {
     let position = 0;
-    const walker = document.createTreeWalker(
-        editor,
-        NodeFilter.SHOW_TEXT,
-        null,
-        false
-    );
+    const walker = document.createTreeWalker(edit, NodeFilter.SHOW_TEXT, null, false);
 
     while (walker.nextNode()) {
         const currentNode = walker.currentNode;
-
         if (currentNode === node) {
             return position + offset;
         }
-
         position += currentNode.textContent.length;
     }
 
@@ -86,64 +85,60 @@ function getCursorPosition(node, offset) {
 }
 
 function updateRemoteCursor(data) {
-    const { userId, userColor, username, sessionId, start, end } = data;
+    const { userId, userColor, username, start, end } = data;
 
-    // Check if the cursor already exists
     let cursorElement = cursors[userId];
 
     if (!cursorElement) {
-        // Create a new cursor marker
         cursorElement = document.createElement("div");
         cursorElement.classList.add("remote-cursor");
         cursorElement.style.position = "absolute";
         cursorElement.style.width = "2px";
-        cursorElement.style.backgroundColor = userColor;
         cursorElement.style.zIndex = 10;
-        cursorElement.title = username; // Hover shows username
 
         cursors[userId] = cursorElement;
-        document.body.appendChild(cursorElement);
+        edit.appendChild(cursorElement);
     }
 
-    // Find the DOM position inside the editor
-    const position = getDomPositionFromOffset(start);
+    // Always update dynamic properties:
+    cursorElement.style.backgroundColor = userColor;
+    cursorElement.title = username;
 
+    const position = getDomPositionFromOffset(start);
     if (position) {
         cursorElement.style.left = position.x + "px";
         cursorElement.style.top = position.y + "px";
+        cursorElement.style.height = "1em";
     }
 }
 
 function getDomPositionFromOffset(offset) {
     const range = document.createRange();
-    const selection = window.getSelection();
-
-    const walker = document.createTreeWalker(
-        edit,
-        NodeFilter.SHOW_TEXT,
-        null,
-        false
-    );
+    const walker = document.createTreeWalker(edit, NodeFilter.SHOW_TEXT, null, false);
 
     let currentOffset = 0;
     let node;
 
     while (walker.nextNode()) {
         node = walker.currentNode;
-        const nodeLength = node.textContent.length;
+        const length = node.textContent.length;
 
-        if (currentOffset + nodeLength >= offset) {
+        if (currentOffset + length >= offset) {
             const withinNodeOffset = offset - currentOffset;
             range.setStart(node, withinNodeOffset);
             range.collapse(true);
 
             const rect = range.getBoundingClientRect();
-            return { x: rect.left, y: rect.top };
+            const editorRect = edit.getBoundingClientRect();
+
+            return {
+                x: rect.left - editorRect.left + edit.scrollLeft,
+                y: rect.top - editorRect.top + edit.scrollTop
+            };
         }
 
-        currentOffset += nodeLength;
+        currentOffset += length;
     }
 
     return null;
 }
-

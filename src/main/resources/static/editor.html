@@ -22,30 +22,35 @@
             margin-bottom: 1rem;
         }
         #editor {
-            width: 100%;
-            height: 100%;
-            border: none;
-            resize: none;
-            outline: none;
-            font-family: 'Arial', sans-serif;
-            font-size: 16px;
-            padding: 1rem;
-            background: transparent;
-            overflow-y: auto;
+            position: relative;
+            min-height: 300px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            font-family: sans-serif;
+            white-space: pre-wrap;
         }
-        .shape {
-            position: absolute;
-            border: 2px dashed #007bff;
-            background: rgba(0, 123, 255, 0.1);
+
+        .remote-cursor {
             pointer-events: none;
-        }
-        @keyframes blink {
-            0% { opacity: 1; }
-            50% { opacity: 0; }
-            100% { opacity: 1; }
-        }
-        .cursor {
+            opacity: 1;
             animation: blink 1s step-start infinite;
+        }
+
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+
+        .remote-cursor::after {
+            content: attr(title);
+            position: absolute;
+            top: -1.2em;
+            left: 0;
+            font-size: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            color: black;
+            padding: 2px 4px;
+            border-radius: 3px;
+            white-space: nowrap;
         }
     </style>
 </head>
