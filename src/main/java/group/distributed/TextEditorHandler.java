@@ -41,9 +41,17 @@ public class TextEditorHandler extends TextWebSocketHandler {
 
 		String type = node.get("type").asText();
 
-		if (initMessage(session, type, node)) return;
-
-		if (updateMessage(session, type, json, node)) return;
+		switch (type) {
+			case "init":
+				initMessage(session, type, node);
+				break;
+			case "update":
+				updateMessage(session, type, json, node);
+				break;
+			case "cursor-update":
+				cursorUpdateMessage(session, json);
+				break;
+		}
 	}
 
 	private boolean initMessage(WebSocketSession session, String type, JsonNode node) {
@@ -98,15 +106,28 @@ public class TextEditorHandler extends TextWebSocketHandler {
 
 		queue.offer(difference);
 
-		// Broadcast to users in the same session
-		for (WebSocketSession sess : clients.keySet()) {
-			ClientInfo other = clients.get(sess);
-			if (sess.isOpen() && !sess.equals(session) && other.sessionId.equals(info.sessionId)) {
-				sess.sendMessage(new TextMessage(json));
-			}
-		}
+		broadcastToOthers(session, json, info);
 
 		return true;
+	}
+
+	private boolean cursorUpdateMessage(WebSocketSession session, String payload) throws IOException {
+		ClientInfo info = clients.get(session);
+		if (info == null) return false;
+
+		broadcastToOthers(session, payload, info);
+
+		return true;
+	}
+
+	private void broadcastToOthers(WebSocketSession socketSession, String payload, ClientInfo clientInfo) throws
+			IOException {
+		for (WebSocketSession session : clients.keySet()) {
+			ClientInfo other = clients.get(session);
+			if (session.isOpen() && !session.equals(socketSession) && other.sessionId.equals(clientInfo.sessionId)) {
+				session.sendMessage(new TextMessage(payload));
+			}
+		}
 	}
 
 	private void startQueueProcessor(String sessionId, BlockingQueue<DifferenceMessage> queue) {
