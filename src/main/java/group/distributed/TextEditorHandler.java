@@ -27,11 +27,6 @@ public class TextEditorHandler extends TextWebSocketHandler {
 	private final ExecutorService                               executor      = Executors.newCachedThreadPool();
 
 	@Override
-	public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-		// initialize happens when the init message is received
-	}
-
-	@Override
 	public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
 		clients.remove(session);
 	}
