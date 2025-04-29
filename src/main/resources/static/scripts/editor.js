@@ -9,6 +9,7 @@ fetch(`/content?session=${sessionId}`)
     lastValue = editor.innerHTML;
 });
 
+let inputTimeout;
 editor.addEventListener("input", () => {
     if (selfChange) {
         selfChange = false;
@@ -18,8 +19,7 @@ editor.addEventListener("input", () => {
     clearTimeout(inputTimeout);
     inputTimeout = setTimeout(() => {
         const newValue = editor.innerHTML;
-        const difference = generateDiff(lastValue, newValue);
-        const cursorPos = getCaretCharacterOffsetWithin(editor);
+        const difference = generateDifference(lastValue, newValue);
         lastValue = newValue;
 
         socket.send(JSON.stringify({
@@ -30,13 +30,27 @@ editor.addEventListener("input", () => {
             sessionId,
             start: difference.start,
             end: difference.end,
-            inserted: difference.inserted,
-            cursor: cursorPos
+            inserted: difference.inserted
         }));
 
         debounceSave(newValue);
     }, 100);
 });
+
+function saveContentToServer(content) {
+    fetch(`/save-content?session=${sessionId}`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ content })
+    }).then(response => {
+        if (!response.ok) {
+            throw new Error("Failed to save content");
+        }
+        console.log("Content saved successfully.");
+    }).catch(err => console.error("Save content error:", err));
+}
 
 let timeoutId;
 function debounceSave(newValue) {

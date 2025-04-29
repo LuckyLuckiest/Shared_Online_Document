@@ -1,6 +1,15 @@
 const messageQueue = [];
 let isProcessing = false;
 
+socket.addEventListener("message", (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.userId === userId) return;
+
+    messageQueue.push(data);
+    processQueue();
+});
+
 function generateDifference(oldText, newText) {
     let start = 0;
     while (start < oldText.length && start < newText.length && oldText[start] === newText[start]) {
@@ -36,16 +45,7 @@ function processQueue() {
     if (data.type === "update") {
         selfChange = true;
         applyDifferenceToEditor(data);
-        showRemoteCursor(data.userId, data.cursor, data.userColor, data.username);
         lastValue = editor.innerHTML;
-    } else if (data.type === "cursor-update") {
-        showRemoteCursor(data.userId, data.start, data.userColor, data.username, data.end);
-    } else if (data.type === "user-left") {
-        if (cursors[data.userId]) {
-            cursors[data.userId].cursor.remove();
-            cursors[data.userId].label.remove();
-            delete cursors[data.userId];
-        }
     }
 
     isProcessing = false;
