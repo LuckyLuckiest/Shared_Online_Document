@@ -2,7 +2,6 @@ package group.distributed;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -29,13 +28,13 @@ public class TextEditorHandler extends TextWebSocketHandler {
 
 	@Override
 	public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-		ObjectNode jsonObject = mapper.createObjectNode();
-		ClientInfo info = clients.get(session);
-
-		jsonObject.put("type", "user-left");
-		jsonObject.put("user", info.sessionId);
-
-		clients.remove(session);
+//		ObjectNode jsonObject = mapper.createObjectNode();
+//		ClientInfo info = clients.get(session);
+//
+//		jsonObject.put("type", "user-left");
+//		jsonObject.put("user", info.sessionId);
+//
+//		clients.remove(session);
 	}
 
 	@Override
@@ -54,9 +53,6 @@ public class TextEditorHandler extends TextWebSocketHandler {
 				break;
 			case "update":
 				updateMessage(session, type, json, node);
-				break;
-			case "cursor-update":
-				cursorUpdateMessage(session, json);
 				break;
 		}
 	}
@@ -114,15 +110,6 @@ public class TextEditorHandler extends TextWebSocketHandler {
 		queue.offer(difference);
 
 		broadcastToOthers(session, json, info);
-
-		return true;
-	}
-
-	private boolean cursorUpdateMessage(WebSocketSession session, String payload) throws IOException {
-		ClientInfo info = clients.get(session);
-		if (info == null) return false;
-
-		broadcastToOthers(session, payload, info);
 
 		return true;
 	}

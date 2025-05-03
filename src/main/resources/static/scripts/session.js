@@ -8,4 +8,13 @@ if (!sessionData) {
     var userId = "user-" + Math.floor(Math.random() * 10000);
     var userColor = color || "#000000";
     var socket = new WebSocket(`ws://${location.host}/edit`);
+
+    socket.addEventListener("open", () => {
+        socket.send(JSON.stringify({
+            type: "init",
+            sessionId,
+            username,
+            userColor
+        }));
+    });
 }
