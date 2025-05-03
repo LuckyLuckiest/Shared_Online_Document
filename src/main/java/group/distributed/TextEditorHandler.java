@@ -2,6 +2,7 @@ package group.distributed;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -14,6 +15,7 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.*;
 
+@Component
 public class TextEditorHandler extends TextWebSocketHandler {
 
 	private final ObjectMapper mapper = new ObjectMapper();
