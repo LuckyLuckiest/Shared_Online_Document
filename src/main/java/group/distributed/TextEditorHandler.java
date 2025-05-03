@@ -2,6 +2,7 @@ package group.distributed;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -30,22 +31,21 @@ public class TextEditorHandler extends TextWebSocketHandler {
 
 	@Override
 	public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-//		ObjectNode jsonObject = mapper.createObjectNode();
-//		ClientInfo info = clients.get(session);
-//
-//		jsonObject.put("type", "user-left");
-//		jsonObject.put("user", info.sessionId);
-//
-//		clients.remove(session);
+		ObjectNode jsonObject = mapper.createObjectNode();
+		ClientInfo info       = clients.get(session);
+
+		if (info == null) return;
+
+		jsonObject.put("type", "user-left");
+		jsonObject.put("sessionId", info.sessionId);
+
+		clients.remove(session);
 	}
 
 	@Override
 	protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
 		String   json = message.getPayload();
 		JsonNode node = mapper.readTree(json);
-
-		// for debugging
-		//System.out.println("Action: " + json);
 
 		String type = node.get("type").asText();
 
